@@ -1,0 +1,194 @@
+// ArcPerpX — Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Orders ────────────────────────────────────────────────────────────────
+
+model Order {
+  id          String    @id
+  trader      String
+  market      String
+  side        String    // LONG | SHORT
+  type        String    // MARKET | LIMIT | STOP
+  size        Float
+  price       Float?
+  stopPrice   Float?
+  leverage    Int
+  marginMode  String    @default("CROSS")
+  status      String    // OPEN | FILLED | CANCELLED | PARTIAL
+  txHash      String?
+  pnl         Float?
+  filledAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([trader, status])
+  @@index([market, status])
+  @@map("orders")
+}
+
+// ── Positions ─────────────────────────────────────────────────────────────
+
+model Position {
+  id               String    @id
+  trader           String
+  market           String
+  side             String
+  size             Float
+  entryPrice       Float
+  margin           Float
+  leverage         Int
+  marginMode       String    @default("CROSS")
+  isOpen           Boolean   @default(true)
+  realizedPnl      Float     @default(0)
+  fundingAccrued   Float     @default(0)
+  liquidationPrice Float
+  txHashOpen       String?
+  txHashClose      String?
+  openedAt         DateTime  @default(now())
+  closedAt         DateTime?
+
+  @@index([trader, isOpen])
+  @@index([market, isOpen])
+  @@map("positions")
+}
+
+// ── Agents ────────────────────────────────────────────────────────────────
+
+model Agent {
+  id              String      @id @default(cuid())
+  owner           String
+  name            String
+  strategyType    String
+  riskTolerance   Float
+  mutationRate    Float       @default(0.1)
+  timeHorizon     String
+  market          String
+  maxPositionSize Float
+  maxLeverage     Int         @default(10)
+  isPublic        Boolean     @default(false)
+  copyFee         Float       @default(0)
+  listPrice       Float       @default(0)
+  strategyHash    String
+  dnaVector       Json?
+  generation      Int         @default(0)
+  parent1Id       String?
+  parent2Id       String?
+  status          String      @default("ACTIVE") // ACTIVE | PAUSED | TRAINING | RETIRED
+  onChainId       Int?        // AgentRegistry NFT tokenId
+  lastTrainingAt  DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  stats           AgentStats?
+  trades          AgentTrade[]
+
+  @@index([owner])
+  @@index([isPublic, status])
+  @@map("agents")
+}
+
+model AgentStats {
+  id             String  @id @default(cuid())
+  agentId        String  @unique
+  totalTrades    Int     @default(0)
+  winningTrades  Int     @default(0)
+  totalPnl       Float   @default(0)
+  sharpeRatio    Float   @default(0)
+  maxDrawdown    Float   @default(0)
+  xpPoints       Int     @default(0)
+
+  agent          Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("agent_stats")
+}
+
+model AgentTrade {
+  id        String   @id @default(cuid())
+  agentId   String
+  market    String
+  side      String
+  size      Float
+  entryPrice Float
+  exitPrice  Float?
+  pnl       Float    @default(0)
+  won       Boolean  @default(false)
+  txHash    String?
+  createdAt DateTime @default(now())
+
+  agent     Agent    @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
+  @@map("agent_trades")
+}
+
+// ── Trader Stats (for leaderboard) ───────────────────────────────────────
+
+model TraderStats {
+  id             String  @id @default(cuid())
+  address        String  @unique
+  username       String?
+  xpPoints       Int     @default(0)
+  totalTrades    Int     @default(0)
+  winningTrades  Int     @default(0)
+  totalPnl       Float   @default(0)
+  sharpeRatio    Float   @default(0)
+  maxDrawdown    Float   @default(0)
+  badges         String[] @default([])
+  tier           String   @default("APPRENTICE")
+  season         String   @default("current")
+  updatedAt      DateTime @updatedAt
+
+  @@index([xpPoints])
+  @@map("trader_stats")
+}
+
+// ── Funding Rates ─────────────────────────────────────────────────────────
+
+model FundingRate {
+  id        String   @id @default(cuid())
+  market    String
+  rate      Float
+  predicted Float    @default(0)
+  longOI    Float    @default(0)
+  shortOI   Float    @default(0)
+  timestamp DateTime @default(now())
+
+  @@index([market, timestamp])
+  @@map("funding_rates")
+}
+
+// ── Oracle Prices ─────────────────────────────────────────────────────────
+
+model OraclePrice {
+  id        String   @id @default(cuid())
+  market    String
+  price     Float
+  source    String   @default("pyth")
+  timestamp DateTime @default(now())
+
+  @@index([market, timestamp])
+  @@map("oracle_prices")
+}
+
+// ── Risk Events ───────────────────────────────────────────────────────────
+
+model RiskEvent {
+  id           String   @id @default(cuid())
+  market       String
+  riskLevel    Float
+  anomalyType  String?
+  description  String
+  actionTaken  String?
+  timestamp    DateTime @default(now())
+
+  @@index([market, timestamp])
+  @@map("risk_events")
+}
